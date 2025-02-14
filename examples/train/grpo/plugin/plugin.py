@@ -43,10 +43,10 @@ class MathAccuracy(ORM):
                     extraction_mode='first_match',
                 )
                 # Reward 1 if the content is the same as the ground truth, 0 otherwise
-                reward = float(verify(answer_parsed, gold_parsed))
+                reward = 2*float(verify(answer_parsed, gold_parsed))
             else:
                 # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
+                reward = 2.0
             rewards.append(reward)
         return rewards
 
@@ -57,7 +57,7 @@ class MathFormat(ORM):
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
+        return [0.5 if match else 0.0 for match in matches]
 
 
 orms['external_math_acc'] = MathAccuracy
