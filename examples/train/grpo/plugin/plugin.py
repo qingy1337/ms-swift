@@ -15,11 +15,11 @@ class MathAccuracy(ORM):
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
+    def __call__(self, completions, answer, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
-        for content, sol in zip(completions, solution):
+        for content, sol in zip(completions, answer):
             gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
             if len(gold_parsed) != 0:
                 # We require the answer to be provided in correct latex (no malformed operators)
