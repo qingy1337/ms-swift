@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
+import os
 from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -10,12 +11,13 @@ import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import (get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
                          is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -37,7 +39,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-
+        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
@@ -107,7 +109,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
                     if get_device_count() == 1:
-                        vllm_device = get_device()  # particular case when training with onyl 1 GPU: share it
+                        vllm_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
                         vllm_device = get_device(local_world_size)  # take the next GPU idx
@@ -128,7 +130,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-                with world_size_patch, profiling_patch:
+                from swift.tuners import Swift
+                with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
                     self.engine = VllmEngine(
                         model.model_dir,
                         model.model_info.torch_dtype,
@@ -161,6 +164,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
     @staticmethod
     @contextmanager
@@ -287,10 +291,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
-                and 'wandb' in self.args.report_to):
-            import pandas as pd
-
+        if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
@@ -298,9 +299,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            df = pd.DataFrame(table)
-
-            if wandb.run is not None and self.accelerator.is_main_process:
+            self.jsonl_writer.append(table)
+            if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
+                import pandas as pd
+                df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
         return outputs

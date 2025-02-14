@@ -8,7 +8,7 @@ environments
 
 ```bash
 pip install math_verify # reward function
-pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+pip install "trl>=0.15"
 ```
 
 **Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
@@ -91,6 +91,7 @@ Hyperparameters
 - reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
+  - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the back-end for sampling generation; default is False, using it is recommended to speed up training.
 - vllm_device: Device for deploying vLLM, default is auto, meaning the first unused GPU. Use cuda:x to specify a particular card.
 - vllm_gpu_memory_utilization: vLLM pass-through parameter.
