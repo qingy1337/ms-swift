@@ -15,7 +15,8 @@ class MathAccuracy(ORM):
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, answer, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
+        answer = solution
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
