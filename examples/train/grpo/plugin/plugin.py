@@ -57,7 +57,7 @@ class MathFormat(ORM):
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [0.5 if match else 0.0 for match in matches]
+        return [0.3 if match else 0.0 for match in matches]
 
 
 orms['external_math_acc'] = MathAccuracy
